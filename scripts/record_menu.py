@@ -1,4 +1,4 @@
-"""Render the VisionTerm-Kosmos main menu to an SVG for documentation.
+"""Render the Vision Terminal Kosmos main menu to an SVG for documentation.
 
 Run with:
     uv run --no-project --with rich --with pyfiglet python scripts/record_menu.py
@@ -30,7 +30,7 @@ def main() -> None:
 
     out = ROOT / "assets" / "menu.svg"
     out.parent.mkdir(exist_ok=True)
-    console.save_svg(str(out), title="VisionTerm-Kosmos")
+    console.save_svg(str(out), title="Vision Terminal Kosmos")
     print(f"Saved: {out}")
 
 

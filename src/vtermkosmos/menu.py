@@ -1,4 +1,4 @@
-"""Interactive menu loop for VisionTerm-Kosmos.
+"""Interactive menu loop for Vision Terminal Kosmos.
 
 Flow: ask for a path first (file or folder), then show the operations that
 are valid for that target. Dispatches to `processor`, handles errors via

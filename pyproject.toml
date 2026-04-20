@@ -1,7 +1,7 @@
 [project]
-name = "vision-term-kosmos"
+name = "vtkosmos"
 version = "0.1.0"
-description = "VisionTerm-Kosmos - Image and video processing CLI, organized."
+description = "Vision Terminal Kosmos - Image and video processing CLI, organized."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [

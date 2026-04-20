@@ -1,4 +1,4 @@
-"""VisionTerm-Kosmos CLI entry point (Typer)."""
+"""Vision Terminal Kosmos CLI entry point (Typer)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=False,
     rich_markup_mode="rich",
-    help="VisionTerm-Kosmos — fast image and video processing in the terminal.",
+    help="Vision Terminal Kosmos — fast image and video processing in the terminal.",
 )
 
 
@@ -35,7 +35,7 @@ def main(
     ),
 ) -> None:
     if version:
-        cli_ui.console.print(f"[bold cyan]VisionTerm-Kosmos[/] v{__version__}")
+        cli_ui.console.print(f"[bold cyan]Vision Terminal Kosmos[/] v{__version__}")
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         # Enter interactive menu loop; exits only when user picks quit.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------------
-# VisionTerm-Kosmos - environment configuration
+# Vision Terminal Kosmos - environment configuration
 # ------------------------------------------------------------------
 # Copy this file to `config.sh` and adjust the paths for your machine.
 # `config.sh` is gitignored, so each collaborator keeps their own
@@ -21,7 +21,7 @@ export VTERM_BACKEND="uv"
 # Directory where uv will create/keep the managed venv.
 # Useful when you want the .venv to live outside the project directory
 # (e.g. on a different disk to save space on the system SSD).
-export UV_PROJECT_ENVIRONMENT="/mnt/hd3/uv-common/vision-term-kosmos"
+export UV_PROJECT_ENVIRONMENT="/mnt/hd3/uv-common/vtkosmos"
 
 # uv cache directory (downloads, compiled wheels, etc.).
 export UV_CACHE_DIR="/mnt/hd3/uv-cache"

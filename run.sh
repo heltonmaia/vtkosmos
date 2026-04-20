@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------------
-# VisionTerm-Kosmos - launcher
+# Vision Terminal Kosmos - launcher
 # ------------------------------------------------------------------
 # Loads the local config (config.sh) and runs the CLI with the chosen
 # backend (uv or venv). With no arguments, opens the interactive menu.
@@ -21,7 +21,7 @@ if [[ -f "$SCRIPT_DIR/config.sh" ]]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/config.sh"
 else
-    echo "[VisionTerm-Kosmos] config.sh not found. Using defaults (backend=uv, local paths)."
+    echo "[Vision Terminal Kosmos] config.sh not found. Using defaults (backend=uv, local paths)."
     echo "  Tip: cp config.sh.example config.sh  and tune it for your machine."
     export VTERM_BACKEND="${VTERM_BACKEND:-uv}"
     export VTERM_VENV_PATH="${VTERM_VENV_PATH:-./.venv}"
@@ -33,7 +33,7 @@ BACKEND="${VTERM_BACKEND:-uv}"
 case "$BACKEND" in
     uv)
         if ! command -v uv >/dev/null 2>&1; then
-            echo "[VisionTerm-Kosmos] 'uv' is not installed. Install it with:"
+            echo "[Vision Terminal Kosmos] 'uv' is not installed. Install it with:"
             echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
             exit 1
         fi
@@ -45,7 +45,7 @@ case "$BACKEND" in
         VENV_PATH="${VTERM_VENV_PATH:-./.venv}"
         PYTHON_BIN="${VTERM_PYTHON:-python3}"
         if [[ ! -d "$VENV_PATH" ]]; then
-            echo "[VisionTerm-Kosmos] Creating venv at $VENV_PATH ..."
+            echo "[Vision Terminal Kosmos] Creating venv at $VENV_PATH ..."
             "$PYTHON_BIN" -m venv "$VENV_PATH"
             # shellcheck disable=SC1091
             source "$VENV_PATH/bin/activate"
@@ -58,7 +58,7 @@ case "$BACKEND" in
         exec vterm "$@"
         ;;
     *)
-        echo "[VisionTerm-Kosmos] Invalid VTERM_BACKEND: '$BACKEND' (use 'uv' or 'venv')."
+        echo "[Vision Terminal Kosmos] Invalid VTERM_BACKEND: '$BACKEND' (use 'uv' or 'venv')."
         exit 1
         ;;
 esac
