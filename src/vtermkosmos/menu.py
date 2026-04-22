@@ -13,8 +13,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterator
 
+from prompt_toolkit import Application
+from prompt_toolkit.data_structures import Point
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Layout
+from prompt_toolkit.layout.containers import HSplit, ScrollOffsets, Window
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.styles import Style
 from rich.prompt import Confirm, Prompt
-from rich.table import Table
 
 from . import cli_ui, processor
 from .processor import IMAGE_EXTS, VIDEO_EXTS, ProcessorError
@@ -69,27 +75,408 @@ def _path_completion() -> Iterator[None]:
 
 
 # ---------------------------------------------------------------------------
+# Keyboard-driven filesystem browser (prompt_toolkit)
+# ---------------------------------------------------------------------------
+class _BrowseOutcome:
+    __slots__ = ("path", "text_mode", "quit")
+
+    def __init__(self) -> None:
+        self.path: Path | None = None
+        self.text_mode: bool = False
+        self.quit: bool = False
+
+
+def _list_dir(p: Path) -> list[Path]:
+    try:
+        entries = [e for e in p.iterdir() if not e.name.startswith(".")]
+    except (PermissionError, OSError):
+        return []
+    entries.sort(key=lambda e: (not e.is_dir(), e.name.lower()))
+    return entries
+
+
+_BROWSER_STYLE = Style.from_dict({
+    "banner": "bold ansibrightcyan",
+    "subtitle": "italic",
+    "rule": "ansimagenta",
+    "header": "bold ansibrightcyan",
+    "dir": "bold ansicyan",
+    "virtual": "italic ansimagenta",
+    "help": "ansigray",
+    "cursor": "reverse bold",
+})
+
+_BANNER_LINES = cli_ui.BANNER_ART.split("\n")
+_BANNER_HEIGHT = len(_BANNER_LINES) + 1  # art + subtitle line
+
+
+def _browse_filesystem(start: Path) -> _BrowseOutcome:
+    """Full-screen directory browser. Returns when the user selects or exits."""
+    from prompt_toolkit.application import get_app
+
+    outcome = _BrowseOutcome()
+    state = {"cwd": start.resolve(), "idx": 0}
+
+    def _virtuals() -> list[tuple[str, str, Path | None]]:
+        items: list[tuple[str, str, Path | None]] = [("use", "[use this folder]", None)]
+        cwd = state["cwd"]
+        if cwd.parent != cwd:
+            items.append(("parent", ".. (parent)", cwd.parent))
+        return items
+
+    def _total() -> int:
+        return len(_virtuals()) + len(_list_dir(state["cwd"]))
+
+    def _selection() -> tuple[str, Path | None]:
+        virtuals = _virtuals()
+        i = state["idx"]
+        if i < len(virtuals):
+            kind, _label, p = virtuals[i]
+            return kind, p
+        j = i - len(virtuals)
+        entries = _list_dir(state["cwd"])
+        if 0 <= j < len(entries):
+            return "entry", entries[j]
+        return "none", None
+
+    def _centered(text: str, style: str) -> tuple[str, str]:
+        try:
+            width = get_app().output.get_size().columns
+        except Exception:
+            width = 80
+        pad = max(0, (width - len(text)) // 2)
+        return (style, " " * pad + text + "\n")
+
+    def render_banner() -> list[tuple[str, str]]:
+        rows = [_centered(line, "class:banner") for line in _BANNER_LINES]
+        rows.append(_centered(cli_ui.BANNER_SUBTITLE, "class:subtitle"))
+        return rows
+
+    def render_path() -> list[tuple[str, str]]:
+        return [("class:header", f" {state['cwd']}\n")]
+
+    def render_body() -> list[tuple[str, str]]:
+        entries = _list_dir(state["cwd"])
+        virtuals = _virtuals()
+        total = len(virtuals) + len(entries)
+        if total == 0:
+            state["idx"] = 0
+        elif state["idx"] >= total:
+            state["idx"] = total - 1
+
+        rows: list[tuple[str, str]] = []
+        for i, (_kind, label, _p) in enumerate(virtuals):
+            marker = "▶ " if i == state["idx"] else "  "
+            style = "class:cursor" if i == state["idx"] else "class:virtual"
+            rows.append((style, f"{marker}{label}\n"))
+        for j, e in enumerate(entries):
+            i = len(virtuals) + j
+            marker = "▶ " if i == state["idx"] else "  "
+            suffix = "/" if e.is_dir() else ""
+            if i == state["idx"]:
+                style = "class:cursor"
+            elif e.is_dir():
+                style = "class:dir"
+            else:
+                style = ""
+            rows.append((style, f"{marker}{e.name}{suffix}\n"))
+        if not rows:
+            rows.append(("", "  (empty)\n"))
+        return rows
+
+    def render_footer() -> list[tuple[str, str]]:
+        return [(
+            "class:help",
+            " ↑/↓ move   ↵ open/select   ← parent   →/space descend   / type path   q quit",
+        )]
+
+    def cursor_pos() -> Point:
+        return Point(x=0, y=state["idx"])
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _(event):  # noqa: ANN001
+        state["idx"] = max(0, state["idx"] - 1)
+
+    @kb.add("down")
+    def _(event):  # noqa: ANN001
+        total = _total()
+        if total:
+            state["idx"] = min(total - 1, state["idx"] + 1)
+
+    @kb.add("home")
+    def _(event):  # noqa: ANN001
+        state["idx"] = 0
+
+    @kb.add("end")
+    def _(event):  # noqa: ANN001
+        total = _total()
+        state["idx"] = max(0, total - 1)
+
+    @kb.add("pageup")
+    def _(event):  # noqa: ANN001
+        state["idx"] = max(0, state["idx"] - 10)
+
+    @kb.add("pagedown")
+    def _(event):  # noqa: ANN001
+        total = _total()
+        if total:
+            state["idx"] = min(total - 1, state["idx"] + 10)
+
+    def _descend_or_select(event) -> None:  # noqa: ANN001
+        kind, p = _selection()
+        if kind == "use":
+            outcome.path = state["cwd"]
+            event.app.exit()
+        elif kind == "parent" and p is not None:
+            state["cwd"] = p
+            state["idx"] = 0
+        elif kind == "entry" and p is not None:
+            if p.is_dir():
+                state["cwd"] = p
+                state["idx"] = 0
+            else:
+                outcome.path = p
+                event.app.exit()
+
+    kb.add("enter")(_descend_or_select)
+    kb.add("right")(_descend_or_select)
+    kb.add("space")(_descend_or_select)
+
+    @kb.add("left")
+    @kb.add("backspace")
+    def _(event):  # noqa: ANN001
+        parent = state["cwd"].parent
+        if parent != state["cwd"]:
+            state["cwd"] = parent
+            state["idx"] = 0
+
+    @kb.add("q")
+    @kb.add("c-c")
+    @kb.add("c-d")
+    def _(event):  # noqa: ANN001
+        outcome.quit = True
+        event.app.exit()
+
+    @kb.add("/")
+    def _(event):  # noqa: ANN001
+        outcome.text_mode = True
+        event.app.exit()
+
+    banner_window = Window(
+        content=FormattedTextControl(text=render_banner),
+        height=_BANNER_HEIGHT,
+    )
+    path_window = Window(
+        content=FormattedTextControl(text=render_path),
+        height=1,
+    )
+    body_window = Window(
+        content=FormattedTextControl(
+            text=render_body,
+            focusable=True,
+            show_cursor=False,
+            get_cursor_position=cursor_pos,
+        ),
+        scroll_offsets=ScrollOffsets(top=2, bottom=2),
+    )
+    footer_window = Window(
+        content=FormattedTextControl(text=render_footer),
+        height=1,
+    )
+
+    layout = Layout(HSplit([
+        banner_window,
+        Window(char="─", height=1, style="class:rule"),
+        path_window,
+        body_window,
+        Window(char="─", height=1, style="class:rule"),
+        footer_window,
+    ]))
+
+    app = Application(
+        layout=layout,
+        key_bindings=kb,
+        full_screen=True,
+        mouse_support=False,
+        style=_BROWSER_STYLE,
+    )
+    app.run()
+    return outcome
+
+
+# ---------------------------------------------------------------------------
+# Keyboard-driven action picker (prompt_toolkit)
+# ---------------------------------------------------------------------------
+_PICKER_STYLE = Style.from_dict({
+    "title": "bold ansibrightcyan",
+    "rule": "ansimagenta",
+    "key": "bold ansimagenta",
+    "name": "bold ansigreen",
+    "desc": "",
+    "cursor": "reverse bold",
+    "help": "ansigray",
+})
+
+
+def _pick_action(
+    title: str,
+    actions: dict[str, tuple[str, str, Callable[[Path], None]]],
+) -> str | None:
+    """Arrow-key picker. Returns the chosen key from `actions`, or None to cancel."""
+    rows_data: list[tuple[str, str, str]] = [
+        (k, name, desc) for k, (name, desc, _fn) in actions.items()
+    ]
+    rows_data.append(("q", "quit", "Leave the menu."))
+
+    state = {"idx": 0}
+    chosen: dict[str, str | None] = {"key": None}
+    name_width = max((len(n) for _k, n, _d in rows_data), default=8)
+
+    def render_title() -> list[tuple[str, str]]:
+        return [("class:title", f" {title}\n")]
+
+    def render_body() -> list[tuple[str, str]]:
+        rows: list[tuple[str, str]] = []
+        for i, (k, name, desc) in enumerate(rows_data):
+            marker = "▶ " if i == state["idx"] else "  "
+            if i == state["idx"]:
+                rows.append((
+                    "class:cursor",
+                    f"{marker}[{k}]  {name:<{name_width}}   {desc}\n",
+                ))
+            else:
+                rows.append(("", f"{marker}["))
+                rows.append(("class:key", k))
+                rows.append(("", "]  "))
+                rows.append(("class:name", f"{name:<{name_width}}"))
+                rows.append(("", f"   {desc}\n"))
+        return rows
+
+    def render_footer() -> list[tuple[str, str]]:
+        return [(
+            "class:help",
+            " ↑/↓ move   ↵ select   1-9 shortcut   q cancel",
+        )]
+
+    def cursor_pos() -> Point:
+        return Point(x=0, y=state["idx"])
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _(event):  # noqa: ANN001
+        state["idx"] = max(0, state["idx"] - 1)
+
+    @kb.add("down")
+    def _(event):  # noqa: ANN001
+        state["idx"] = min(len(rows_data) - 1, state["idx"] + 1)
+
+    @kb.add("home")
+    def _(event):  # noqa: ANN001
+        state["idx"] = 0
+
+    @kb.add("end")
+    def _(event):  # noqa: ANN001
+        state["idx"] = len(rows_data) - 1
+
+    @kb.add("enter")
+    def _(event):  # noqa: ANN001
+        k, _name, _desc = rows_data[state["idx"]]
+        chosen["key"] = k
+        event.app.exit()
+
+    @kb.add("q")
+    @kb.add("c-c")
+    @kb.add("c-d")
+    @kb.add("escape", eager=True)
+    def _(event):  # noqa: ANN001
+        chosen["key"] = "q"
+        event.app.exit()
+
+    # Digit shortcuts: press "1" to pick the first action, etc.
+    for i, (k, _n, _d) in enumerate(rows_data):
+        if k.isdigit() and len(k) == 1:
+            def _make(key: str):
+                def _h(event):  # noqa: ANN001
+                    chosen["key"] = key
+                    event.app.exit()
+                return _h
+            kb.add(k)(_make(k))
+
+    title_window = Window(
+        content=FormattedTextControl(text=render_title),
+        height=1,
+    )
+    body_window = Window(
+        content=FormattedTextControl(
+            text=render_body,
+            focusable=True,
+            show_cursor=False,
+            get_cursor_position=cursor_pos,
+        ),
+        scroll_offsets=ScrollOffsets(top=1, bottom=1),
+    )
+    footer_window = Window(
+        content=FormattedTextControl(text=render_footer),
+        height=1,
+    )
+
+    layout = Layout(HSplit([
+        title_window,
+        Window(char="─", height=1, style="class:rule"),
+        body_window,
+        Window(char="─", height=1, style="class:rule"),
+        footer_window,
+    ]))
+
+    app = Application(
+        layout=layout,
+        key_bindings=kb,
+        full_screen=True,
+        mouse_support=False,
+        style=_PICKER_STYLE,
+    )
+    app.run()
+    return chosen["key"]
+
+
+# ---------------------------------------------------------------------------
 # Prompt helpers
 # ---------------------------------------------------------------------------
 def _ask_target() -> Path | None:
-    """Prompt for the file or folder to work on. Returns None if user quits."""
+    """Prompt for the file or folder to work on. Returns None if user quits.
+
+    Opens a keyboard-driven filesystem browser first. Pressing `/` inside the
+    browser drops to a text prompt with TAB completion (the original behavior).
+    """
     while True:
-        with _path_completion():
-            raw = Prompt.ask(
-                f"[bold {cli_ui.BRAND_COLOR}]Path to video, image, or folder[/] "
-                "[dim](or 'q' to quit)[/]"
-            )
-        raw = raw.strip().strip('"').strip("'")
-        if raw.lower() == "q":
+        outcome = _browse_filesystem(Path.cwd())
+        if outcome.quit:
             return None
-        if not raw:
-            cli_ui.error("Path cannot be empty.")
+        if outcome.path is not None:
+            return outcome.path
+        if not outcome.text_mode:
             continue
-        path = Path(raw).expanduser()
-        if not path.exists():
-            cli_ui.error(f"Path not found: {path}")
-            continue
-        return path
+
+        # Text-mode fallback — preserves original prompt behavior.
+        while True:
+            with _path_completion():
+                raw = Prompt.ask(
+                    f"[bold {cli_ui.BRAND_COLOR}]Path to video, image, or folder[/] "
+                    "[dim](empty = back to browser, 'q' to quit)[/]"
+                )
+            raw = raw.strip().strip('"').strip("'")
+            if raw.lower() == "q":
+                return None
+            if not raw:
+                break  # back to browser
+            path = Path(raw).expanduser()
+            if not path.exists():
+                cli_ui.error(f"Path not found: {path}")
+                continue
+            return path
 
 
 def _ask_out_path(label: str, default: Path) -> Path:
@@ -229,26 +616,6 @@ def _flow_batch_resize(folder: Path) -> None:
     cli_ui.success(f"Batch complete in: [bold]{out_dir}[/]")
 
 
-# ---------------------------------------------------------------------------
-# Operation tables (shown after a target is chosen)
-# ---------------------------------------------------------------------------
-def _ops_table(title: str, rows: list[tuple[str, str, str]]) -> Table:
-    t = Table(
-        title=title,
-        title_style=f"bold {cli_ui.BRAND_COLOR}",
-        border_style=cli_ui.ACCENT_COLOR,
-        header_style="bold white",
-        expand=True,
-    )
-    t.add_column("Key", style=f"bold {cli_ui.ACCENT_COLOR}", no_wrap=True, justify="center")
-    t.add_column("Command", style="bold green", no_wrap=True)
-    t.add_column("Description", style="white")
-    for row in rows:
-        t.add_row(*row)
-    t.add_row("q", "quit", "Leave the menu.")
-    return t
-
-
 _VIDEO_MENU: dict[str, tuple[str, str, Callable[[Path], None]]] = {
     "1": ("cut",     "Trim a segment (no re-encode).",              _flow_cut),
     "2": ("convert", "Convert to another format.",                  _flow_convert_file),
@@ -289,7 +656,6 @@ def loop() -> None:
             first = False
         else:
             cli_ui.console.rule(style=cli_ui.ACCENT_COLOR)
-        cli_ui.print_banner()
 
         target = _ask_target()
         if target is None:
@@ -304,16 +670,8 @@ def loop() -> None:
             continue
 
         title, actions = menu
-        rows = [(key, name, desc) for key, (name, desc, _fn) in actions.items()]
-        cli_ui.console.print(_ops_table(title, rows))
-        choices = [*actions.keys(), "q"]
-        choice = Prompt.ask(
-            f"\n[bold {cli_ui.ACCENT_COLOR}]Choose an option[/]",
-            choices=choices,
-            default="q",
-            show_choices=True,
-        )
-        if choice == "q":
+        choice = _pick_action(title, actions)
+        if choice is None or choice == "q":
             cli_ui.console.print(f"[bold {cli_ui.BRAND_COLOR}]Goodbye![/]")
             return
 

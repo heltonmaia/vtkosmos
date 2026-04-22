@@ -29,19 +29,18 @@ console = Console()
 BRAND_COLOR = "bright_cyan"
 ACCENT_COLOR = "magenta"
 
+BANNER_ART = pyfiglet.figlet_format("Kosmos", font="slant").rstrip("\n")
+BANNER_SUBTITLE = "Vision Terminal · Kosmos — image & video, organized."
+
 
 # ---------------------------------------------------------------------------
 # Banner and panels
 # ---------------------------------------------------------------------------
 def render_banner() -> Panel:
     """ASCII-art banner shown in --help and in the main menu."""
-    art = pyfiglet.figlet_format("Kosmos", font="slant")
-    subtitle = Text(
-        "Vision Terminal · Kosmos — image & video, organized.",
-        style="italic white",
-    )
+    subtitle = Text(BANNER_SUBTITLE, style="italic white")
     body = Group(
-        Align.center(Text(art, style=f"bold {BRAND_COLOR}")),
+        Align.center(Text(BANNER_ART, style=f"bold {BRAND_COLOR}")),
         Align.center(subtitle),
     )
     return Panel(body, border_style=ACCENT_COLOR, padding=(0, 2))
