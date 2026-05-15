@@ -102,7 +102,7 @@ def select_crop_rect(src: Path) -> tuple[int, int, int, int]:
         x, y, w, h = cv2.selectROI(
             "Drag a rectangle - ENTER to confirm, ESC to cancel",
             frame,
-            showCrosshair=True,
+            showCrosshair=False,
             fromCenter=False,
         )
     except cv2.error as e:
