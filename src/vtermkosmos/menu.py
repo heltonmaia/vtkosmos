@@ -496,6 +496,15 @@ def _ask_int(label: str, default: int) -> int:
             cli_ui.error("Please enter an integer.")
 
 
+def _ask_float(label: str, default: float) -> float:
+    while True:
+        raw = Prompt.ask(f"[bold {cli_ui.BRAND_COLOR}]{label}[/]", default=str(default))
+        try:
+            return float(raw)
+        except ValueError:
+            cli_ui.error("Please enter a number.")
+
+
 def _ask_time(label: str) -> str | None:
     """Prompt for a time; empty input returns None (= no bound)."""
     raw = Prompt.ask(f"[bold {cli_ui.BRAND_COLOR}]{label}[/]").strip()
@@ -547,6 +556,22 @@ def _flow_wa_fix(src: Path) -> None:
         processor.wa_fix(src, dst, max_height=max_h, video_bitrate=bitrate)
         progress.advance(task)
     cli_ui.success(f"WhatsApp-ready: [bold]{dst}[/]")
+
+
+def _flow_resample(src: Path) -> None:
+    info = processor.probe_video(src)
+    source_fps = info.fps if info.fps > 0 else 30.0
+    fps = _ask_float("New FPS", default=round(source_fps, 2))
+    do_crop = Confirm.ask(
+        f"[bold {cli_ui.BRAND_COLOR}]Crop a region?[/]", default=False
+    )
+    rect = processor.select_crop_rect(src) if do_crop else None
+    dst = _ask_out_path("Output file", src.with_name(f"{src.stem}_resampled.mp4"))
+    with cli_ui.make_progress() as progress:
+        task = progress.add_task(f"Resampling {src.name}", total=1)
+        processor.resample_video(src, dst, fps=fps, crop=rect)
+        progress.advance(task)
+    cli_ui.success(f"Saved to: [bold]{dst}[/]")
 
 
 def _flow_info(src: Path) -> None:
@@ -617,10 +642,11 @@ def _flow_batch_resize(folder: Path) -> None:
 
 
 _VIDEO_MENU: dict[str, tuple[str, str, Callable[[Path], None]]] = {
-    "1": ("cut",     "Trim a segment (no re-encode).",              _flow_cut),
-    "2": ("convert", "Convert to another format.",                  _flow_convert_file),
-    "3": ("wa-fix",  "Optimize for WhatsApp (H.264/AAC, ≤720p).",   _flow_wa_fix),
-    "4": ("info",    "Show metadata (resolution, fps, duration).",  _flow_info),
+    "1": ("cut",      "Trim a segment (no re-encode).",              _flow_cut),
+    "2": ("convert",  "Convert to another format.",                  _flow_convert_file),
+    "3": ("wa-fix",   "Optimize for WhatsApp (H.264/AAC, ≤720p).",   _flow_wa_fix),
+    "4": ("resample", "Re-encode at a chosen FPS, optionally crop.", _flow_resample),
+    "5": ("info",     "Show metadata (resolution, fps, duration).",  _flow_info),
 }
 
 _IMAGE_MENU: dict[str, tuple[str, str, Callable[[Path], None]]] = {
