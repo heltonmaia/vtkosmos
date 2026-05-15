@@ -1,6 +1,8 @@
-"""Render the Vision Terminal Kosmos main menu to an SVG for documentation.
+"""Render the Vision Terminal Kosmos action picker to an SVG for documentation.
 
-Run with:
+Reproduces the keyboard-driven `_pick_action` view for a video target, with the
+cursor sitting on `resample`. Run with:
+
     uv run --no-project --with rich --with pyfiglet python scripts/record_menu.py
 """
 
@@ -12,19 +14,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from rich.align import Align
 from rich.console import Console
 from rich.text import Text
 
 from vtermkosmos import cli_ui
 
 
-_STYLES = {
-    "cursor": "reverse bold",
-    "virtual": f"italic magenta",
-    "dir": "bold cyan",
-    "file": "",
-}
+_ACTIONS: list[tuple[str, str, str]] = [
+    ("1", "cut",      "Trim a segment (no re-encode)."),
+    ("2", "convert",  "Convert to another format."),
+    ("3", "wa-fix",   "Optimize for WhatsApp (H.264/AAC, ≤720p)."),
+    ("4", "resample", "Re-encode at a chosen FPS, optionally crop."),
+    ("5", "info",     "Show metadata (resolution, fps, duration)."),
+    ("q", "quit",     "Leave the menu."),
+]
+_CURSOR_INDEX = 3  # resample
 
 
 def main() -> None:
@@ -36,36 +40,26 @@ def main() -> None:
         highlight=False,
     )
 
-    # Banner: pyfiglet art + subtitle, centered (matches the prompt_toolkit browser).
-    console.print(Align.center(Text(cli_ui.BANNER_ART, style=f"bold {cli_ui.BRAND_COLOR}")))
-    console.print(Align.center(Text(cli_ui.BANNER_SUBTITLE, style="italic white")))
+    name_width = max(len(name) for _k, name, _d in _ACTIONS)
 
-    console.rule(style=cli_ui.ACCENT_COLOR)
-    console.print(Text(" /home/heltonmaia/Videos/Kooha", style=f"bold {cli_ui.BRAND_COLOR}"))
+    console.print(Text(" Operations for this video", style=f"bold {cli_ui.BRAND_COLOR}"))
     console.rule(style=cli_ui.ACCENT_COLOR)
 
-    entries: list[tuple[str, str]] = [
-        ("virtual", "[use this folder]"),
-        ("virtual", ".. (parent)"),
-        ("file", "2AF11_OF_low_1min_tracked.webm"),
-        ("file", "analises.mp4"),
-        ("file", "analises.webm"),
-        ("file", "bot_test.webm"),
-        ("file", "Kooha-2025-02-27-10-29-51.webm"),
-        ("cursor", "Kooha-2025-02-27-10-30-24.webm"),
-        ("file", "Kooha-2025-02-27-10-31-32.webm"),
-        ("file", "Kooha-2025-02-27-10-31-42.webm"),
-        ("file", "Kooha-2025-04-27-18-29-04.webm"),
-        ("dir", "reference/"),
-    ]
-    for kind, name in entries:
-        prefix = "▶ " if kind == "cursor" else "  "
-        console.print(Text(prefix + name, style=_STYLES[kind]))
+    for i, (k, name, desc) in enumerate(_ACTIONS):
+        if i == _CURSOR_INDEX:
+            row = Text(f"▶ [{k}]  {name:<{name_width}}   {desc}", style="reverse bold")
+        else:
+            row = Text("  [")
+            row.append(k, style=f"bold {cli_ui.ACCENT_COLOR}")
+            row.append("]  ")
+            row.append(f"{name:<{name_width}}", style="bold green")
+            row.append(f"   {desc}")
+        console.print(row)
 
     console.rule(style=cli_ui.ACCENT_COLOR)
     console.print(
         Text(
-            " ↑/↓ move   ↵ open/select   ← parent   →/space descend   / type path   q quit",
+            " ↑/↓ move   ↵ select   1-9 shortcut   q cancel",
             style="dim",
         )
     )
