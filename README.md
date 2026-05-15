@@ -17,6 +17,7 @@ Built with [Typer](https://typer.tiangolo.com/), [Rich](https://rich.readthedocs
 | `cut`      | Cuts a video segment between `--start` and `--end` (no re-encode) |
 | `convert`  | Converts images (PNG/JPG/WebP…) and videos (MP4/MKV/WebM/GIF)    |
 | `wa-fix`   | Optimizes a video for WhatsApp (H.264 baseline, AAC, ≤720p)      |
+| `resample` | Re-encodes a video at a chosen FPS, optionally cropping a region |
 | `batch`    | Applies conversion or resize to every file in a folder           |
 | `info`     | Prints media metadata (resolution, fps, duration)                |
 
@@ -132,6 +133,9 @@ skipped and the CLI behaves as a classic one-shot command.
 ./run.sh cut video.mp4 --start 00:10 --end 00:45  # cut segment
 ./run.sh convert photo.png photo.webp --quality 90
 ./run.sh wa-fix meeting.mov                       # produces meeting_wa.mp4
+./run.sh resample clip.mp4 --fps 24               # re-encode at 24 fps
+./run.sh resample clip.mp4 --fps 24 --crop        # opens OpenCV window to drag a crop
+./run.sh resample clip.mp4 --crop-rect 100:50:640:480  # scripted crop, source fps
 ./run.sh batch ./photos --to .webp                # convert whole folder
 ./run.sh batch ./photos --resize 1280             # resize (longest side)
 ```
