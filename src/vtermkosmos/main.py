@@ -165,6 +165,12 @@ def cmd_resample(
         info = processor.probe_video(src)
         target_fps = fps if fps is not None else info.fps
 
+        if fps is None and info.fps <= 0:
+            cli_ui.error(
+                "Could not determine source FPS - pass --fps explicitly."
+            )
+            raise typer.Exit(code=2)
+
         if not crop and not crop_rect and abs(target_fps - info.fps) < 1e-6:
             cli_ui.error("Nothing to do (same FPS, no crop).")
             raise typer.Exit(code=2)

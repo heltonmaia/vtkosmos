@@ -560,8 +560,9 @@ def _flow_wa_fix(src: Path) -> None:
 
 def _flow_resample(src: Path) -> None:
     info = processor.probe_video(src)
-    source_fps = info.fps if info.fps > 0 else 30.0
-    fps = _ask_float("New FPS", default=round(source_fps, 2))
+    if info.fps <= 0:
+        raise ProcessorError("Could not determine source FPS for this video.")
+    fps = _ask_float("New FPS", default=round(info.fps, 2))
     do_crop = Confirm.ask(
         f"[bold {cli_ui.BRAND_COLOR}]Crop a region?[/]", default=False
     )
