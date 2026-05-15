@@ -24,6 +24,17 @@ def _handle(err: ProcessorError) -> None:
     raise typer.Exit(code=1)
 
 
+def _parse_crop_rect(s: str) -> tuple[int, int, int, int]:
+    """Parse '--crop-rect X:Y:W:H' into four ints. CLI concern, not processor."""
+    try:
+        parts = [int(p) for p in s.split(":")]
+        if len(parts) != 4:
+            raise ValueError
+        return parts[0], parts[1], parts[2], parts[3]
+    except ValueError:
+        raise typer.BadParameter("--crop-rect must be X:Y:W:H with integer values")
+
+
 # ---------------------------------------------------------------------------
 # Root callback: menu + --version + help with banner
 # ---------------------------------------------------------------------------
@@ -123,6 +134,55 @@ def cmd_wa_fix(
     except ProcessorError as err:
         _handle(err)
     cli_ui.success(f"WhatsApp-ready: [bold]{dst}[/]")
+
+
+# ---------------------------------------------------------------------------
+# resample
+# ---------------------------------------------------------------------------
+@app.command("resample", help="Re-encode at a chosen FPS, optionally cropping a rectangle.")
+def cmd_resample(
+    src: Path = typer.Argument(..., exists=True, readable=True, dir_okay=False, help="Input video file."),
+    fps: Optional[float] = typer.Option(
+        None, "--fps", "-f", help="New frame rate. Default: source video's FPS."
+    ),
+    crop: bool = typer.Option(
+        False, "--crop", help="Open an OpenCV window to drag a crop rectangle."
+    ),
+    crop_rect: Optional[str] = typer.Option(
+        None, "--crop-rect", help="Crop region as 'X:Y:W:H' (integers). Bypasses the GUI."
+    ),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file. Default: <name>_resampled.mp4 (must end in .mp4)."
+    ),
+) -> None:
+    if crop and crop_rect:
+        cli_ui.error("Use exactly one of: --crop or --crop-rect.")
+        raise typer.Exit(code=2)
+
+    dst = output or src.with_name(f"{src.stem}_resampled.mp4")
+
+    try:
+        info = processor.probe_video(src)
+        target_fps = fps if fps is not None else info.fps
+
+        if not crop and not crop_rect and abs(target_fps - info.fps) < 1e-6:
+            cli_ui.error("Nothing to do (same FPS, no crop).")
+            raise typer.Exit(code=2)
+
+        if crop:
+            rect = processor.select_crop_rect(src)
+        elif crop_rect:
+            rect = _parse_crop_rect(crop_rect)
+        else:
+            rect = None
+
+        with cli_ui.make_progress() as progress:
+            task = progress.add_task(f"Resampling {src.name}", total=1)
+            processor.resample_video(src, dst, fps=target_fps, crop=rect)
+            progress.advance(task)
+    except ProcessorError as err:
+        _handle(err)
+    cli_ui.success(f"Saved to: [bold]{dst}[/]")
 
 
 # ---------------------------------------------------------------------------
